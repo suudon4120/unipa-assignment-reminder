@@ -1,3 +1,5 @@
+// background.js
+
 // 拡張機能起動時またはインストール時にアラームをセット
 chrome.runtime.onInstalled.addListener(() => {
     setupAlarm();
@@ -6,7 +8,7 @@ chrome.runtime.onInstalled.addListener(() => {
 function setupAlarm() {
     const now = new Date();
     const target = new Date();
-    target.setHours(16, 0, 0, 0); // 16:00に設定
+    target.setHours(16, 0, 0, 0); 
 
     if (now > target) {
         target.setDate(now.getDate() + 1);
@@ -15,30 +17,43 @@ function setupAlarm() {
     const delay = target.getTime() - now.getTime();
     chrome.alarms.create("dailyReminder", {
         when: Date.now() + delay,
-        periodInMinutes: 1440 // 24時間おきに定期実行
+        periodInMinutes: 1440 
     });
-    console.log("16時のアラームをセットしました。");
 }
 
 // メッセージ受信（新着チェック用）
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "SAVE_TASKS") {
-        const newTasks = message.data;
+        const currentMsgTasks = message.data; // 今、画面で見えている課題たち
 
         chrome.storage.local.get(["oldTasks"], (result) => {
-            const oldTasks = result.oldTasks || [];
-            
-            // 完全に一致（タイトルと日付）しないものだけを「新規」とする
-            const addedTasks = newTasks.filter(n => 
-                !oldTasks.some(o => o.title === n.title && o.date === n.date)
-            );
+            // これまでに保存してある全課題リスト（なければ空配列）
+            let storedTasks = result.oldTasks || [];
+            let tasksToNotify = [];
 
-            if (addedTasks.length > 0) {
-                sendToSlack(`🆕 *新しい課題が登録されました*\n` + formatTaskList(addedTasks));
+            currentMsgTasks.forEach(newTask => {
+                // 保存済みリストの中に、全く同じ（タイトルと期限が一致）課題があるか？
+                const exists = storedTasks.some(stored => 
+                    stored.title === newTask.title && stored.date === newTask.date
+                );
+
+                // まだ保存されていない未知の課題なら
+                if (!exists) {
+                    tasksToNotify.push(newTask);
+                    storedTasks.push(newTask); // 保存リストに追加（統合）
+                }
+            });
+
+            // 新しいものがあった場合のみ通知
+            if (tasksToNotify.length > 0) {
+                console.log("新着課題を検出:", tasksToNotify);
+                sendToSlack(`🆕 *新しい課題が登録されました*\n` + formatTaskList(tasksToNotify));
+            } else {
+                console.log("新着課題はありませんでした。");
             }
 
-            // 最新の全リストを保存
-            chrome.storage.local.set({ oldTasks: newTasks });
+            // 【重要】統合された最新リストを保存し直す
+            chrome.storage.local.set({ oldTasks: storedTasks });
         });
     }
     return true;
@@ -63,7 +78,8 @@ async function checkAndRemindTomorrow() {
         const dStr = String(tomorrow.getDate()).padStart(2, '0');
         const tomorrowTarget = `${yStr}/${mStr}/${dStr}`;
 
-        const urgentTasks = tasks.filter(t => t.date === tomorrowTarget);
+        // 期限には " 23:59" などが含まれる場合があるため、前方一致で判定する
+        const urgentTasks = tasks.filter(t => t.date.startsWith(tomorrowTarget));
 
         if (urgentTasks.length > 0) {
             sendToSlack(`⏰ *16時です。明日締切の課題があります！*\n` + formatTaskList(urgentTasks));
@@ -76,25 +92,17 @@ function formatTaskList(tasks) {
 }
 
 async function sendToSlack(messageText) {
-    // ストレージからURLを取得
     chrome.storage.local.get(['slackWebhookUrl'], async (result) => {
         const webhookUrl = result.slackWebhookUrl;
-
-        if (!webhookUrl) {
-            console.error("Slack Webhook URLが設定されていません。拡張機能のオプションから設定してください。");
-            return;
-        }
+        if (!webhookUrl) return;
 
         try {
-            const response = await fetch(webhookUrl, {
+            await fetch(webhookUrl, {
                 method: "POST",
                 body: JSON.stringify({ text: messageText })
             });
-            if (!response.ok) {
-                console.error("Slack送信エラー:", response.status);
-            }
         } catch (e) {
-            console.error("Slack送信通信エラー", e);
+            console.error("Slack送信エラー", e);
         }
     });
 }
