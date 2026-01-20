@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "UNIPA Assignment Reminder",
+  "version": "1.0",
+  "description": "UNIPAの課題をSlackに通知する拡張機能",
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://*/uprx/*",
+    "https://hooks.slack.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://*/uprx/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
