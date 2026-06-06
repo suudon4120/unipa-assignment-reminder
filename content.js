@@ -41,21 +41,30 @@ const scrapeDetailOnly = () => {
         return;
     }
 
-    // 期限の取得（"～" の後ろの日付）
-    // 詳細ページ特有の <span class="fromto">～</span> の隣の要素
-    const deadlineElement = document.querySelector('.fromto + span');
-    if (!deadlineElement) return;
-
-    // 課題名の取得
     let taskTitle = null;
-    const labels = document.querySelectorAll('label.ui-outputlabel');
+    let rawDeadlineDate = null;
+
+    // テーブル内のすべてのヘッダーセル（td）を走査
+    const tdHeaders = document.querySelectorAll('td.ui-widget-header');
     
-    // テーブル内のラベルから「課題名」を探し、その隣のセルの値を取る
-    labels.forEach(label => {
-        if (label.innerText.trim() === "課題名") {
-            const titleCell = label.closest('td').nextElementSibling;
-            if (titleCell) {
-                taskTitle = titleCell.innerText.trim();
+    tdHeaders.forEach(td => {
+        const headerText = td.innerText.trim();
+
+        // 1. 課題名の取得
+        if (headerText === "課題名") {
+            const titleCell = td.nextElementSibling;
+            if (titleCell) taskTitle = titleCell.innerText.trim();
+        }
+
+        // 2. 【修正】課題提出期間の取得
+        if (headerText === "課題提出期間") {
+            const periodCell = td.nextElementSibling;
+            if (periodCell) {
+                // 「～」の後ろにある最後の span（終了日時）をピンポイントで取得
+                const deadlineSpan = periodCell.querySelector('.fromto + span');
+                if (deadlineSpan) {
+                    rawDeadlineDate = deadlineSpan.innerText.trim();
+                }
             }
         }
     });
